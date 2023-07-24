@@ -1,0 +1,647 @@
+---
+title: "whole"
+author: "HongzheXu"
+date: "2023-05-03"
+output: html_document
+---
+
+
+```{r}
+Args <- commandArgs(TRUE)
+chk = TRUE; #check if the simulated is well behaved
+
+library("Rmixmod")
+source("vsLoad.R")
+source("vsFunctionStepReg.R")
+whichReg <- stepReg
+source("vsFunction.R")
+##REVISIT 24, 41, 44, 51, 52 ~53, 54, 61,62,63
+##Plan: 1. Look at DV.S results (from school) -- How "close" was the decision -
+##For atleast 1, 2 -- Sample 25
+
+sav.plot  = FALSE
+#-------------------------------------------------
+tryMods1 = paste(rep(.mclustModel,each=4),c(".II",".RI",".IJ",".RJ"),sep="")       # 40 types of the model
+.startVar=1:6; g1=2;g2=4;varTypes=c(rep("N",4),"C","C"); which.pri="MOD"
+nSim=20
+nSim1=21; nSim2=40
+#-------------------------------------------------
+names1 = cbind("Ind","Name","G","N","Roles")
+names2 = cbind("Ind","Name","N1","N2","N3","N4","C1","C2")
+write.table(names1,file="loadData.txt",row.names=FALSE,col.names=FALSE,sep=",")       # write the title in .txt
+write.table(names2,file="loadRole.txt",row.names=FALSE,col.names=FALSE,sep=",")
+
+```
+
+
+```{r fig.height=7, fig.width=7}
+
+##-----------------1: EII.II (1 Cat)------------------
+##mixClust works ok with N=250
+##VS working
+ ##Set + Write out Truth to external files --> Used in vsLoad, vsRun, vsSimRes
+ for(d.i in c(11:15)){
+  if(d.i==11) d.ind="EII.II"; 
+  if(d.i==12) d.ind="EEI.II"; 
+  if(d.i==13) d.ind="EEE.II"; 
+  if(d.i==14) d.ind="VII.II";
+  if(d.i==15) d.ind="EII.II";              
+
+  G=3; N=250; 
+  if(d.i < 15){  SRUW= c("S=(N1,N2,C1),U=(N3,N4,C2)"); useS = cbind(d.i,d.ind,"S","S","U","U","S","U") 
+  }else{ SRUW= c("S=(N1,N2,C1),W=(N3,N4,C2)"); useS = cbind(d.i,d.ind,"S","S","W","W","S","W")  }    
+
+  write.table(cbind(d.i,d.ind,G,N,SRUW),file="loadData.txt",sep=",",append=TRUE,row.names=FALSE,col.names=FALSE)
+  write.table(useS,file="loadRole.txt",sep=",",append=TRUE,row.names=FALSE,col.names=FALSE)
+  ##---------
+  sN = which(varTypes=="N" & useS[3:8]=="S"); l.sN = length(sN)
+  nN = 4; nC = 2
+  prob=list()
+  prob[[1]] = rbind(c(.9,.05,.05),c(.05,.9,.05),c(.05,.05,.9))
+  prob[[2]] = rbind(c(.95,.05),c(.05,.95),c(.95,.05),c(.05,.95))
+  mu = cbind(c(3,3),c(1.5,1.5),c(-1.5,-1.5))
+  .var= c(1,1)
+  G.var = array(NA,dim=c(l.sN,l.sN,G))
+  if(d.i==11 | d.i==15){ 
+    if(d.i==15) prob[[2]] = rbind(rep(1/4,4))    #15 is special, it changes prob[[2]]
+    mu = cbind(c(3,3),c(1.5,1.5),c(-1.5,-1.5))
+    .var= c(1,1)
+    G.var[1:l.sN,1:l.sN,1:G] = diag(l.sN)
+  }
+  if(d.i==12){ 
+    mu = cbind(c(3,3),c(1.5,1.5),c(-1.5,-1.5))
+    .var= c(1,1)
+    G.var[,,1:G] <- c(1.5,.5)*diag(l.sN)
+  }
+  if(d.i==13){
+     mu = cbind(c(2.5,2.5),c(1.5,1.5),c(-1.5,-1.5))
+     .var= c(1,1)
+     G.var[,,1:G] <- rbind(c(1.5,-.5),c(-.5,.75))  
+  }
+  if(d.i==14){ 
+    mu = cbind(c(3,3),c(1.5,1.5),c(-1.5,-1.5))
+    .var= c(1,1)
+    G.var[,,1:2] = .5*diag(l.sN); G.var[,,3] = 2*diag(l.sN) 
+  }
+  ##--------
+  d <- matrix(NA,N*nSim,nN+nC+2) 
+   for(nS in nSim1:nSim2){
+    u = sample(1:G,N,replace=TRUE)     # randomly distributed into 3 groups
+    useNorm <- matrix(NA,N,nN); useCat1 <- useCat2 <- NULL
+    chk2 <- NULL
+    for(i in 1:N) useNorm[i,1:2] <- rmvnorm(1,mu[,u[i]],.var*G.var[,,u[i]])      #mvnorm of 3 groups
+    for(i in 1:N) useCat1[i] <- sample(1:ncol(prob[[1]]),1,prob=prob[[1]][u[i],],replace=TRUE)    # P = 0.9
+    if(d.i<15){      ##Create U .variables
+      for(i in 1:N) useNorm[i,3:4] <- rmvnorm(1,useNorm[i,1:2]*sample(seq(.7,1.3,by=.05),2),    #fill in useNorm last two columns
+                                              matrix(c(1,.9,.9,1),2,2))
+      for(i in 1:N) chk2[i]    <- ifelse(useNorm[i,1]<=0,1,2)
+      for(i in 1:N) useCat2[i] <- sample(1:ncol(prob[[2]]),1,prob=prob[[2]][chk2[i],],replace=TRUE)        # P = 0.95
+    }
+    else{            ##Create W .variables
+      useNorm[1:N,3:4] <- rmvnorm(N,c(2,2),diag(2)*2)
+      for(i in 1:N) useCat2[i] <- sample(1:ncol(prob[[2]]),1,prob=prob[[2]],replace=TRUE)    
+    }
+    d[(1:N)+(nS-(nSim1-1)-1)*N,] <- cbind(useNorm,factor(useCat1),factor(useCat2),u,rep(nS,N))
+  }
+#write.table(d,file=paste("d",d.i,".csv",sep=""),row.names=FALSE,col.names=FALSE,sep=",")
+}
+##--------
+# filenames <- c("plot1.png", "plot2.png", "plot3.png","plot4.png", "plot5.png", "plot6.png","plot7.png", "plot8.png", "plot9.png","plot10.png", "plot11.png", "plot12.png","plot13.png", "plot14.png", "plot15.png","plot16.png", "plot17.png", "plot18.png","plot19.png", "plot20.png")
+#  if(sav.plot) pdf(file=paste("DatPlot",d.i,".pdf",sep=""))
+#  for(nS in nSim1:nSim2){
+#    if(!sav.plot) 
+#        filename <- filenames[nS-20]
+#  png(filename)  
+#    my.pairs(d[d[,8]==nS,1:(nN+nC)],d[d[,8]==nS,7],NA);   mtext(side=3,outer=TRUE,cex=1.25,paste(d.ind,": ",SRUW,": N=",N,sep=""))  
+#     }; 
+
+# .rs.restartR()
+
+
+#  if(sav.plot) pdf(file=paste("DatPlot",d.i,".pdf",sep=""))
+#  for(nS in nSim1:nSim2){
+#    if(!sav.plot) #png("myplot.png")  
+#      dev.new();
+#    my.pairs(d[d[,8]==nS,1:(nN+nC)],d[d[,8]==nS,7],NA);   mtext(side=3,outer=TRUE,cex=1.25,paste(d.ind,": ",SRUW,": N=",N,sep=""))  
+#     }; dev.off(); 
+
+
+
+if(chk){
+a = vs = list(); dd = data.frame(d); dd[,5] <- factor(d[,5]); dd[,6] <- factor(d[,6])
+#a0=whichClust(NULL,c(1,2),"Excl",d[d[,8]==1,.startVar],g1,g2,varTypes,tryMods1,"MOD",kp,tol,max.iter,TRUE)
+truth <- FALSE; nS <- nSim1-1; i <- 0
+need <- 2
+while(!truth & i<need ){
+  nS <- nS+1
+  tmp <- whichClust(NULL,c(1,2,5),"Excl",subset(dd[,.startVar],d[,8]==nS),g1,g2,varTypes,tryMods1,"MOD",kp,tol,max.iter,FALSE)     # CHANGE TRUE TO F
+  truth <- tmp$G==G & tmp$model==d.ind
+  i <- i+ifelse(truth,1,0)
+}                # result: best mixClust model: EII.II with 3 clusters 
+write.table(subset(d,d[,8]<=nS),file=paste("d",d.i,".csv",sep=""),row.names=FALSE,col.names=FALSE,sep=",",append=TRUE)
+for(nS in nSim1:nSim2) vs[[nS]]= stepSelect(.startVar,2,g2,tryMods1,d[d[,8]==nS,.startVar],varTypes,which.pri,.kp,.tol,.max.iter,FALSE,TRUE,"Dean")   # It has problems CHANGE TRUE TO F
+}
+write.csv(d,"C:/Users/86186/Desktop/mixClust-main/mixClust-main/function/testdata.csv")
+```
+
+
+```{r fig.height=7, fig.width=7}
+
+##-----------------2: EII.II (2 Cat)------------------
+##mixClust works ok with N=250
+##VS working
+  ##Set + Write out Truth to external files --> Used in vsLoad, vsRun, vsSimRes
+for(d.i in 21:25){
+  if(d.i==21) d.ind="EII.II"; 
+  if(d.i==22) d.ind="EEI.II"; 
+  if(d.i==23) d.ind="EEE.II"; 
+  if(d.i==24) d.ind="VII.II";
+  if(d.i==25) d.ind="EII.II"; 
+  G=4; N=250; 
+  if(d.i<25){     SRUW= c("S=(N1,N2,C1,C2),U=(N3,N4)"); useS = cbind(d.i,d.ind,"S","S","U","U","S","S")   
+  }else{          SRUW= c("S=(N1,N2,C1,C2),W=(N3,N4)"); useS = cbind(d.i,d.ind,"S","S","W","W","S","S") }
+  write.table(cbind(d.i,d.ind,G,N,SRUW),file="loadData.txt",sep=",",append=TRUE,row.names=FALSE,col.names=FALSE)
+  write.table(useS,file="loadRole.txt",sep=",",append=TRUE,row.names=FALSE,col.names=FALSE)
+  ##---------
+  sN = which(varTypes=="N" & useS[3:8]=="S"); l.sN = length(sN)
+  nN = 4; nC = 2
+  prob=list()
+  prob[[1]] = rbind(c(.9,.05,.05),c(.05,.9,.05),c(.05,.05,.9))
+  prob[[2]] = rbind(c(.9,.05,.05),c(.05,.9,.05),c(.05,.9,.05))
+  .var= c(1,1)
+  G.var = array(NA,dim=c(l.sN,l.sN,G))
+  if(d.i==21 | d.i==25){ 
+    mu = cbind(c(-3,-4),c(4,2),c(0,-4),c(4,0))
+    .var= c(1,1)
+    G.var[1:l.sN,1:l.sN,1:G] = diag(l.sN)
+  }
+  if(d.i==22){ 
+    mu = cbind(c(-2,-4),c(4,2),c(0,-4),c(4,0))
+    .var= c(1,1)
+    G.var[,,1:G] <- c(1.5,.75)*diag(l.sN)
+  }
+  if(d.i==23){
+    mu = cbind(c(-2,-4),c(4,2),c(0,-4),c(4,0))
+    .var= c(1,1)
+   G.var[,,1:G] <- rbind(c(.5,-.75),c(-.75,2))  
+  }
+  if(d.i==24){ 
+    mu = cbind(c(-1.5,-4),c(4,3),c(0,-4),c(4,0))
+    .var= c(1,1)
+    G.var[,,c(1,3)] = .5*diag(l.sN); G.var[,,c(2,4)] = 1.5*diag(l.sN) 
+  }
+##--------
+  d <- matrix(NA,N*nSim,nN+nC+2) 
+   for(nS in nSim1:nSim2){
+     useNorm <- matrix(NA,N,nN); useCat1 <- useCat2 <- NULL; chk1 <- chk2 <- NULL
+    u = sample(1:G,N,replace=TRUE)
+    for(i in 1:N) useNorm[i,1:2] <- rmvnorm(1,mu[,u[i]],.var*G.var[,,u[i]])            #mvnorm of 4 groups
+    for(i in 1:N) chk1[i] <- ifelse(u[i]==1 | u[i]==3,1,ifelse(u[i]==2,2,3))
+    for(i in 1:N) chk2[i] <- ifelse(u[i]==2 | u[i]==4,1,ifelse(u[i]==3,2,3))
+    for(i in 1:N) useCat1[i] <- sample(1:ncol(prob[[1]]),1,prob=prob[[1]][chk1[i],],replace=TRUE)   #use prob1's rows to indicate the probability of getting 1,2,3
+    for(i in 1:N) useCat2[i] <- sample(1:ncol(prob[[1]]),1,prob=prob[[1]][chk2[i],],replace=TRUE)   #Other way to categorize
+    if(d.i<25){ ##U .variables
+      for(i in 1:N) useNorm[i,3:4] <- rmvnorm(1,useNorm[i,1:2]*sample(seq(.7,1.3,by=.05),2),matrix(c(1,.9,.9,1),2,2))   #random ND useNorm1,2
+    }else{ useNorm[1:N,3:4] <- rmvnorm(N,c(2,2),diag(2)*2) } ##W .variables  
+    d[(1:N)+(nS-(nSim1-1)-1)*N,] <- cbind(useNorm,factor(useCat1),factor(useCat2),u,rep(nS,N))
+  }
+#write.table(d,file=paste("d",d.i,".csv",sep=""),col.names=FALSE,row.names=FALSE,sep=",")
+}
+
+
+##--------
+#filenames <- c("plot1.png", "plot2.png", "plot3.png","plot4.png", "plot5.png", "plot6.png","plot7.png", "plot8.png", "plot9.png","plot10.png", "plot11.png", #"plot12.png","plot13.png", "plot14.png", "plot15.png","plot16.png", "plot17.png", "plot18.png","plot19.png", "plot20.png")
+#  if(sav.plot) pdf(file=paste("DatPlot",d.i,".pdf",sep=""))
+#  for(nS in nSim1:nSim2){
+#    if(!sav.plot) 
+#        filename <- filenames[nS-20]
+#  png(filename)  
+#    my.pairs(d[d[,8]==nS,1:(nN+nC)],d[d[,8]==nS,7],NA);   mtext(side=3,outer=TRUE,cex=1.25,paste(d.ind,": ",SRUW,": N=",N,sep=""))  
+#     }; 
+
+#.rs.restartR()
+
+
+
+#if(sav.plot) pdf(file=paste("DatPlot",d.i,".pdf",sep=""))
+# for(nS in 21:40){
+#  if(!sav.plot) dev.new();
+#   my.pairs(d[d[,8]==nS,1:(nN+nC)],d[d[,8]==nS,7],NA);   mtext(side=3,outer=TRUE,cex=1.25,paste(d.ind,": ",SRUW,": N=",N,sep=""))
+# }; dev.off(); 
+
+
+
+  #chk =1;
+  if(chk){
+  a = vs = list(); dd = data.frame(d); dd[,5] <- factor(d[,5]); dd[,6] <- factor(d[,6]);
+  #a0=whichClust(NULL,c(1,2),"Excl",d[d[,8]==1,.startVar],g1,g2,varTypes,tryMods1,"MOD",kp,tol,max.iter,TRUE)
+  truth <- FALSE; nS <- nSim1-1; i <- 0
+  need <- 2
+  while(i!=need & nS<nSim2 ){
+    nS <- nS+1
+   # testmod1 = c("EEI.II",  "EEI.IJ" , "VEI.II", "VEI.IJ" , "EVI.II",  "EVI.IJ","VVI.II", "VVI.IJ"  )
+       tmp <- whichClust(NULL,c(1,2,5,6),"Excl",subset(dd[,.startVar],d[,8]==nS),g1,g2,varTypes,tryMods1,"MOD",kp,tol,max.iter,TRUE)   #tryMods1
+   
+    truth <- tmp$G==G & tmp$model==d.ind
+    i <- i+ifelse(truth,1,0)
+  }
+  if(i==need & nS <=nSim2){
+  write.table(subset(d,d[,8]<=nS ),file=paste("d",d.i,".csv",sep=""),row.names=FALSE,col.names=FALSE,sep=",",append=TRUE)
+  }
+  
+  a = vs = list(); d = data.frame(d); d[,5] <- factor(d[,5]); d[,6] <- factor(d[,6])
+ # a0=whichClust(NULL,c(1,2),"Excl",d[d[,8]==1,.startVar],g1,g2,varTypes,tryMods1,"MOD",kp,tol,max.iter,TRUE)         # add #
+  for(nS in 1:nSim) a[[nS]] = whichClust(NULL,c(1,2,5,6),"Excl",d[d[,8]==(nS+20),.startVar],g1,g2,varTypes,tryMods1,"MOD",kp,tol,max.iter,TRUE)         #change nS to (nS+20)                             # only ns = 40 has problem
+  for(nS in 1:nSim) vs[[nS]]= stepSelect(.startVar,2,g2,tryMods1,d[d[,8]==(nS+20),.startVar],varTypes,which.pri,.kp,.tol,.max.iter,TRUE,TRUE,"Dean")    #change nS to (nS+20)  
+  }
+```
+
+
+
+```{r fig.height=7, fig.width=7}
+
+##-----------------   3  --------------------------
+##-----------------EII.IJ (2 Cat)------------------     ## VII.IJ replaces it
+##mixClust, VS works N=250
+  ##Set + Write out Truth to external files --> Used in vsLoad, vsRun, vsSimRes
+  G=3; N=250; 
+for(d.i in 31:34){
+  if(d.i==31) d.ind="EII.IJ"; 
+  if(d.i==32) d.ind="EEI.IJ"; 
+  if(d.i==33) d.ind="EEE.IJ"; 
+  if(d.i==34) d.ind="VII.IJ";
+  #d.i=35; d.ind="EII.IJ"; 
+
+  if(d.i<35){     SRUW= c("S=(N1,N2,C*=(C1,C2)),U=(N3,N4)"); useS = cbind(d.i,d.ind,"S","S","U","U","S","S")  
+  }else{          SRUW= c("S=(N1,N2,C*=(C1,C2)),W=(N3,N4)"); useS = cbind(d.i,d.ind,"S","S","W","W","S","S") }
+  # write.table(cbind(d.i,d.ind,G,N,SRUW),file="loadData.txt",sep=",",append=TRUE,row.names=FALSE,col.names=FALSE)
+  # write.table(useS,file="loadRole.txt",sep=",",append=TRUE,row.names=FALSE,col.names=FALSE)
+  ##---------
+  sN = which(varTypes=="N" & useS[3:8]=="S"); l.sN = length(sN)
+  nN = 4; nC = 2
+  prob=list()
+  prob[[1]] <- rbind(rep(1/2,2),c(.95,.05),c(.05,.95))
+  prob[[2]] <- rbind(c(.95,.05),c(.05,.95))
+  .var= c(1,1)
+  G.var = array(NA,dim=c(l.sN,l.sN,G))
+  if(d.i==31 | d.i==35){ 
+    mu = cbind(c(0,0),c(-1.5,-1.5),c(1.75,0))
+    .var= c(1,1)*.75
+    G.var[1:l.sN,1:l.sN,1:G] = diag(l.sN)
+  }
+  if(d.i==32){ 
+  #  mu = cbind(c(0,0),c(-1.5,-1.5),c(1.75,0))
+  #  .var= c(.5,2)
+  #  G.var[1:l.sN,1:l.sN,1:G] = diag(l.sN)  
+      mu = cbind(c(0,0),c(-1.5,-1.5),c(1.75,-.25))
+      .var= c(.5,2)
+      G.var[1:l.sN,1:l.sN,1:G] = diag(l.sN)    
+    
+  }
+  if(d.i==33){
+    mu = cbind(c(0,0),c(-2,-2),c(1.75,0))
+    .var= c(1,1)
+    G.var[1:l.sN,1:l.sN,1:G] = matrix(c(.5,-.6,-.6,2),2,2) 
+
+   }
+  if(d.i==34){ 
+    mu = cbind(c(1,1),c(-1.5,-1.5),c(3,1))
+    .var= c(1,1)*.75
+    G.var[1:l.sN,1:l.sN,1:G] = diag(l.sN)
+    G.var[,,1] <- 2*diag(l.sN)
+   }
+##--------
+  d <- matrix(NA,N*nSim,nN+nC+2) 
+  for(nS in nSim1:nSim2){
+    useNorm <- matrix(NA,N,nN); useCat1 <- useCat2 <- NULL; chk2 <- NULL
+    u = sample(1:G,N,replace=TRUE)
+    for(i in 1:N) useNorm[i,1:2] <- rmvnorm(1,mu[,u[i]],.var*G.var[,,u[i]])
+    for(i in 1:N) useCat1[i] <- sample(1:ncol(prob[[1]]),1,prob=prob[[1]][u[i],],replace=TRUE)
+    for(i in 1:N) chk2[i] <- ifelse(u[i]==1,ifelse(useCat1[i]==1,1,2),ifelse(useCat1[i]==1,2,1))
+    for(i in 1:N) useCat2[i] <- sample(1:ncol(prob[[2]]),1,prob=prob[[2]][chk2[i],],replace=TRUE)
+    #if(d.i<35){ ##U .variables
+     for(i in 1:N) useNorm[i,3:4] <- rmvnorm(1,useNorm[i,1:2]*sample(seq(.7,1.3,by=.05),2),
+                                              matrix(c(1,.9,.9,1),2,2))
+   # }else{ useNorm[1:N,3:4] <- rmvnorm(N,c(2,2),diag(2)*2) } ##W .variables
+    d[(1:N)+(nS-(nSim1-1)-1)*N,] <- cbind(useNorm,factor(useCat1),factor(useCat2),u,rep(nS,N))
+  }
+#write.table(d,file=paste("d",d.i,".csv",sep=""),row.names=FALSE,col.names=FALSE,sep=",")
+}
+
+#filenames <- c("plot1.png", "plot2.png", "plot3.png","plot4.png", "plot5.png", "plot6.png","plot7.png", "plot8.png", "plot9.png","plot10.png", "plot11.png", #"plot12.png","plot13.png", "plot14.png", "plot15.png","plot16.png", "plot17.png", "plot18.png","plot19.png", "plot20.png")
+#  if(sav.plot) pdf(file=paste("DatPlot",d.i,".pdf",sep=""))
+#  for(nS in nSim1:nSim2){
+#    if(!sav.plot) 
+#        filename <- filenames[nS-20]
+#  png(filename)  
+#    my.pairs(d[d[,8]==nS,1:(nN+nC)],d[d[,8]==nS,7],NA);   mtext(side=3,outer=TRUE,cex=1.25,paste(d.ind,": ",SRUW,": N=",N,sep=""))  
+#     }; 
+
+# .rs.restartR()
+
+# recover 285-289
+#  if(sav.plot) pdf(file=paste("DatPlot",d.i,".pdf",sep=""))
+#  for(nS in nSim1:nSim2){
+#    if(!sav.plot) dev.new();
+#     my.pairs(d[d[,8]==nS,1:(nN+nC)],d[d[,8]==nS,7],NA);    mtext(side=3,outer=TRUE,cex=1.25,paste(d.ind,": ",SRUW,": N=",N,sep=""))
+#   }; dev.off(); 
+
+
+ rerun = 1  # I set 1
+if(rerun){
+a = vs = list(); dd = data.frame(d); dd[,5] <- factor(d[,5]); dd[,6] <- factor(d[,6])
+truth <- FALSE; nS <- nSim1-1; i <- 0
+need <- 4
+
+while(i!=need & nS<nSim2 ){
+    nS <- nS+1
+  #  testmod1 = c("EEI.II",  "EEI.IJ" , "VEI.II", "VEI.IJ" , "EVI.II",  "EVI.IJ","VVI.II", "VVI.IJ", "EEI.RI", "EEI.RJ","VEI.RI","VEI.RJ"   )
+       tmp <- whichClust(NULL,c(1,2,5,6),"Excl",subset(dd[,.startVar],d[,8]==nS),g1,g2,varTypes, tryMods1,"MOD",kp,tol,max.iter,TRUE)   #tryMods1
+   
+    truth <- tmp$G==G & tmp$model==d.ind
+    i <- i+ifelse(truth,1,0)
+  }
+if(i==need & nS <=nSim2){
+write.table(subset(d,d[,8]<=nS),file=paste("d",d.i,".csv",sep=""),row.names=FALSE,col.names=FALSE,sep=",",append=TRUE)
+}
+}
+
+
+
+if(chk){
+  used=d
+  a = vs = list();  d = data.frame(d); d[,5] <- factor(d[,5]); d[,6] <- factor(d[,6])
+  #a1=whichClust(NULL,c(1,2),"Excl",d[d[,8]==1,.startVar],g1,g2,varTypes,tryMods1,"MOD",kp,tol,max.iter,TRUE)  
+  #for(nS in 1:nSim) 
+  a[[nS]] = whichClust(NULL,c(1,2,5,6),"Excl",d[d[,8]==nS,.startVar],g1,g2,varTypes,tryMods1,"MOD",kp,tol,max.iter,TRUE)                                      
+  #for(nS in 1:nSim) 
+    vs[[nS]]= stepSelect(.startVar,2,g2,tryMods1,d[d[,8]==nS,.startVar],varTypes,which.pri,.kp,.tol,.max.iter,TRUE,TRUE,"Dean")
+}
+```
+
+
+
+```{r}
+
+##-----------------   4  --------------------------
+##-----------------Exx.RI (1 Cat)------------------
+##mixClust , VS work with N=250
+##Set + Write out Truth to external files --> Used in vsLoad, vsRun, vsSimRes
+for(d.i in c(41,44)){
+G=2;
+   if(d.i==41){ d.ind="EXX.RI"; N=200 }
+   if(d.i==44){ d.ind="VXX.RI"; N=250 }
+   #if(d.i==45) d.ind="EXX.RI"; 
+
+  if(d.i<45){
+   SRUW= c("S=(N1,C1),U=(N3,N4,C2),W=(N2)"); useS = cbind(d.i,d.ind,"S","W","U","U","S","U")  
+  }else{   SRUW= c("S=(N1,C1),W=(N2,N3,N4,C2)"); useS = cbind(d.i,d.ind,"S","W","W","W","S","W")  }
+ 
+ #write.table(cbind(d.i,d.ind,G,N,SRUW),file="loadData.txt",sep=",",append=TRUE,row.names=FALSE,col.names=FALSE)
+ #write.table(useS,file="loadRole.txt",sep=",",append=TRUE,row.names=FALSE,col.names=FALSE)
+##---------
+sN = which(varTypes=="N" & useS[3:8]=="S"); 
+if(d.i==41 | d.i==44 | d.i==45){ l.sN = length(sN)+1 }else{ l.sN = length(sN) }
+nN = 4; nC = 2
+prob=list()
+prob[[1]] = rbind(c(.55,.45),c(.5,.5))
+#prob[[2]] = rbind(c(.9,.05,.05),c(.05,.4,.45))   old version
+prob[[2]] = rbind(c(.9,.05,.05),c(.05,.5,.45))    # I set
+G.var = array(NA,dim=c(l.sN,l.sN,G))
+if(d.i==41 | d.i==45){ 
+  if(d.i==45) prob[[2]] = rep(1/G,G) 
+  mu = cbind(c(-2,0),c(-1,0),c(1,0),c(2,0))
+  .var= c(1,2)*.5
+  G.var[1:l.sN,1:l.sN,1:G] = diag(l.sN)
+}
+if(d.i==44){ 
+  #mu = cbind(c(-1.75,0),c(-1,0),c(1.5,0),c(3.5,0))
+  mu = cbind(c(-1.75,0),c(-1,0),c(2.25,0),c(3.5,0))
+  .var= c(1,1)
+  G.var[,,1] = diag(l.sN)*c(.25,1);  
+  G.var[,,2] = diag(l.sN)*c(1,1); 
+}
+##--------
+##--------
+d <- matrix(NA,N*(nSim2-nSim1+1),nN+nC+2) 
+for(nS in nSim1:nSim2){
+  useNorm <- matrix(NA,N,nN); useCat1 <- useCat2 <- NULL; chk2 <- NULL
+  u = sample(1:G,N,replace=TRUE)
+  for(i in 1:N) useCat1[i] <- sample(1:ncol(prob[[1]]),1,prob=prob[[1]][u[i],],replace=TRUE)
+  u2 <- 2*u-(useCat1%%2)            #1,2,3,4
+  for(i in 1:N) useNorm[i,1:2] <- rmvnorm(1,mu[,u2[i]],.var*G.var[,,u[i]])
+  if(d.i<45){ ##Create U .variables
+    for(i in 1:N) useNorm[i,3:4] <- rmvnorm(1,useNorm[i,1:2]*sample(seq(.7,1.3,by=.05),2),
+                                            matrix(c(1,.9,.9,1),2,2))
+    for(i in 1:N) chk2[i] <- ifelse(useNorm[i,1]>11,1,2)
+    for(i in 1:N) useCat2[i] <- sample(1:ncol(prob[[2]]),1,prob=prob[[2]][chk2[i],],replace=TRUE)
+  }else{      ##Create W .variables
+    useNorm[1:N,3:4] <- rmvnorm(N,c(2,2),diag(2)*2)
+    for(i in 1:N) useCat2[i] <- sample(1:ncol(prob[[2]]),1,prob=prob[[2]],replace=TRUE)    
+  }
+  d[(1:N)+(nS-(nSim1-1)-1)*N,] <- cbind(useNorm,factor(useCat1),factor(useCat2),u,rep(nS,N))
+}
+#write.table(d,file=paste("d",d.i,".csv",sep=""),row.names=FALSE,col.names=FALSE,sep=",")
+}
+if(rerun){
+a = vs = list(); dd = data.frame(d); dd[,5] <- factor(d[,5]); dd[,6] <- factor(d[,6])
+truth <- FALSE; nS <- nSim1-1; i <- 0
+#need <- 4
+while(i!=need & nS<nSim2 ){
+  nS <- nS+1
+  tmp <- whichClust(NULL,c(1,5,6),"Excl",subset(dd[,.startVar],d[,8]==nS),g1,g2,varTypes,tryMods1,"MOD",kp,tol,max.iter,TRUE)
+  truth <- tmp$G==G & tmp$model==d.ind
+  i <- i+ifelse(truth,1,0)
+}
+if(i==need & nS <=nSim2){
+write.table(subset(d,d[,8]<=nS),file=paste("d",d.i,".csv",sep=""),row.names=FALSE,col.names=FALSE,sep=",",append=TRUE)
+}
+}
+
+
+##--------
+#if(sav.plot) pdf(file=paste("DatPlot",d.i,".pdf",sep=""))
+# for(nS in 21:40){
+# if(!sav.plot) dev.new();
+# used <- d[d[,8]==nS,];    u2 <- 2*used[,7]-(used[,5]%%2)
+# my.pairs(used[,1:6],used[,7],NA);   mtext(side=3,outer=TRUE,cex=1.25,paste(d.ind,":",SRUW,"N=",N,"(True Class)",sep=""))
+# my.pairs(used[,1:6],u2,NA);    mtext(side=3,outer=TRUE,cex=1.25,paste(d.ind,":",SRUW,"N=",N,"(Condit on C1)",sep=""))
+# }; dev.off(); 
+
+# 4(1) picture
+filenames <- c("plot1.png", "plot2.png", "plot3.png","plot4.png", "plot5.png", "plot6.png","plot7.png", "plot8.png", "plot9.png","plot10.png", "plot11.png", "plot12.png","plot13.png", "plot14.png", "plot15.png","plot16.png", "plot17.png", "plot18.png","plot19.png", "plot20.png")
+  if(sav.plot) pdf(file=paste("DatPlot",d.i,".pdf",sep=""))
+  for(nS in nSim1:nSim2){
+    if(!sav.plot) 
+        filename <- filenames[nS-20]
+  png(filename)  
+    used <- d[d[,8]==nS,]
+ my.pairs(used[,1:6],used[,7],NA);   mtext(side=3,outer=TRUE,cex=1.25,paste(d.ind,":",SRUW,"N=",N,"(True Class)",sep=""))  
+     }; 
+
+.rs.restartR()
+
+# 4(2) picture cannot run together with # 4(1) picture   !!!
+filenames <- c("plot1.png", "plot2.png", "plot3.png","plot4.png", "plot5.png", "plot6.png","plot7.png", "plot8.png", "plot9.png","plot10.png", "plot11.png", "plot12.png","plot13.png", "plot14.png", "plot15.png","plot16.png", "plot17.png", "plot18.png","plot19.png", "plot20.png")
+  if(sav.plot) pdf(file=paste("DatPlot",d.i,".pdf",sep=""))
+  for(nS in nSim1:nSim2){
+    if(!sav.plot) 
+        filename <- filenames[nS-20]
+  png(filename)  
+    used <- d[d[,8]==nS,];    u2 <- 2*used[,7]-(used[,5]%%2)
+ my.pairs(used[,1:6],u2,NA);    mtext(side=3,outer=TRUE,cex=1.25,paste(d.ind,":",SRUW,"N=",N,"(Condit on C1)",sep=""))
+     }; 
+
+.rs.restartR()
+
+
+if(chk){
+  a = vs = list();   d = data.frame(d); d[,5] <- factor(d[,5]); d[,6] <- factor(d[,6])
+  a0=whichClust(NULL,c(1),"Excl",d[d[,8]==21,.startVar],g1,g2,varTypes,tryMods1,priorControl(),kp,tol,max.iter,TRUE)  
+ # for(nS in 1:5) a[[nS]] = whichClust(NULL,c(1,5),"Excl",d[d[,8]==nS,.startVar],g1,g2,varTypes,tryMods1,"MOD",kp,tol,max.iter,TRUE)                                      
+#  for(nS in 1:2) vs[[nS]]= stepSelect(.startVar,2,g2,tryMods1,d[d[,8]==nS,.startVar],varTypes,which.pri,.kp,.tol,.max.iter,TRUE,TRUE,"Dean")
+}
+```
+
+
+
+
+```{r}
+
+##-----------------   5  --------------------------
+##-----------------Exx.RI (1 Cat)------------------
+for(d.i in 51:54){
+G=3; N=500; 
+
+  if(d.i==51) d.ind="EII.RI"; 
+  if(d.i==52) d.ind="EEI.RI"; 
+  if(d.i==53) d.ind="EEE.RI"; 
+  if(d.i==54) d.ind="VII.RI";
+  if(d.i==55) d.ind="EII.RI"; 
+
+ if(d.i<55){
+  SRUW= c("S=(N1,N2,C1,C2),U=(N3,N4)"); useS = cbind(d.i,d.ind,"S","S","U","U","S","S")  
+ }else{
+  SRUW= c("S=(N1,N2,C1,C2),W=(N3,N4)"); useS = cbind(d.i,d.ind,"S","S","W","W","S","S")  
+ }
+ #write.table(cbind(d.i,d.ind,G,N,SRUW),file="loadData.txt",sep=",",append=TRUE,row.names=FALSE,col.names=FALSE)
+ #write.table(useS,file="loadRole.txt",sep=",",append=TRUE,row.names=FALSE,col.names=FALSE)
+##---------
+sN = which(varTypes=="N" & useS[3:8]=="S"); l.sN = length(sN)
+nN = 4; nC = 2
+prob=list()
+prob[[1]] = rbind(c(.50,.5),c(.5,.5),c(.5,.5))
+prob[[2]] = rbind(c(.5,.5),c(.5,.5),c(.5,.5))
+G.var = array(NA,dim=c(l.sN,l.sN,G))
+if(d.i==51 | d.i==55){ 
+  mu11 = c(-1.5,-3.25)
+  uc1 = c(-1.25,.75); uc2=c(.9,1.15)
+  mu1 = cbind(mu11,mu11+uc1,mu11+uc2,mu11+uc1+uc2); 
+  mu = cbind(mu1,mu1+c(0,-4),mu1+c(4,-1))
+  .var= c(1,1)*.5
+  G.var[1:l.sN,1:l.sN,1:G] = diag(l.sN)
+}
+if(d.i==52){ 
+  mu11 = c(-1.5,-3.25)
+  uc1 = c(-2.5,.75); uc2=c(1.25,1)
+  mu1 = cbind(mu11,mu11+uc1,mu11+uc2,mu11+uc1+uc2); 
+  mu = cbind(mu1,mu1+c(0,-4),mu1+c(8,-3))
+  .var= c(4,.5)*.5
+  G.var[1:l.sN,1:l.sN,1:G] = diag(l.sN)
+}
+if(d.i==53){    
+  mu11 = c(-1.5,-3.25)
+  uc1 = c(-2.5,.75); uc2=c(1.25,1)
+  mu1 = cbind(mu11,mu11+uc1,mu11+uc2,mu11+uc1+uc2);   
+  mu = cbind(mu1,mu1+c(0,-5),mu1+c(7,0))
+  .var= c(1,1)
+  G.var[1:l.sN,1:l.sN,1:G] = rbind(c(1.5,-.75),c(-.75,.75))
+}
+if(d.i==54){ 
+  mu11 = c(-1.5,-3.25)
+  uc1 = c(-1.25,.75); uc2=c(.9,1.15)
+  mu1 = cbind(mu11,mu11+uc1,mu11+uc2,mu11+uc1+uc2); 
+  mu = cbind(2*mu1,mu1+c(0,-8),1.5*mu1+c(5,-1))
+  .var= c(1,1)
+  G.var[,,1] = 1.5*diag(l.sN); G.var[,,2] = .5*diag(l.sN); G.var[,,3] = .75*diag(l.sN)     
+}
+##--------
+d <- matrix(NA,N*nSim,nN+nC+2) 
+for(nS in nSim1:nSim2){
+  u = sample(1:G,N,replace=TRUE)
+  useNorm <- matrix(NA,N,nN); useCat1 <- useCat2 <- NULL; u2 <- NULL
+  for(i in 1:N) useCat1[i] <- sample(1:ncol(prob[[1]]),1,prob=prob[[1]][u[i],],replace=TRUE)
+  for(i in 1:N) useCat2[i] <- sample(1:ncol(prob[[2]]),1,prob=prob[[2]][u[i],],replace=TRUE)
+  for(i in 1:N) u2[i] <- 4*(u[i]-1)+1*ifelse(useCat1[i]==1,useCat2[i],useCat2[i]+2)
+  for(i in 1:N) useNorm[i,1:2] <- rmvnorm(1,mu[,u2[i]],.var*G.var[,,u[i]])
+  if(d.i<55){ ##Create U .variables
+    for(i in 1:N) useNorm[i,3:4] <- rmvnorm(1,useNorm[i,1:2]*sample(seq(.75,1.25,by=.05),2),
+                                            matrix(c(1,.9,.9,1),2,2))
+  }else{ useNorm[1:N,3:4] <- rmvnorm(N,c(2,2),diag(2)*2) } ##Create W .variables
+  d[(1:N)+(nS-(nSim1-1)-1)*N,] <- cbind(useNorm,factor(useCat1),factor(useCat2),u,rep(nS,N))
+}
+#write.table(d,file=paste("d",d.i,".csv",sep=""),row.names=FALSE,col.names=FALSE,sep=",")
+}
+if(rerun){
+a = vs = list(); dd = data.frame(d); dd[,5] <- factor(d[,5]); dd[,6] <- factor(d[,6])
+truth <- FALSE; nS <- nSim1-1; i <- 0
+#need <- 4
+while(i!=need & nS<nSim2 ){
+  nS <- nS+1
+  tmp <- whichClust(NULL,c(1,2,5,6),"Excl",subset(dd[,.startVar],d[,8]==nS),g1,g2,varTypes,tryMods1,"MOD",kp,tol,max.iter,TRUE)
+  truth <- tmp$G==G & tmp$model==d.ind
+  i <- i+ifelse(truth,1,0)
+}
+if(i==need & nS <=nSim2){
+write.table(subset(d,d[,8]<=nS),file=paste("d",d.i,".csv",sep=""),row.names=FALSE,col.names=FALSE,sep=",",append=TRUE)
+}
+}
+##----------  
+#if(sav.plot) pdf(file=paste("DatPlot",d.ind,".pdf",sep=""))
+#for(nS in 1:nSim){
+#  if(!sav.plot) dev.new();
+#  used <- d[d[,8]==nS,]; u2 <- NULL
+#  for(i in 1:N) u2[i] <- 4*(used[i,7]-1)+1*ifelse(used[i,5]==1,used[i,6],used[i,6]+2)
+#  my.pairs(used[,1:6],used[,7],NA);    mtext(side=3,outer=TRUE,cex=1.25,paste(d.ind," :R,S=(N1,N2,C1,C2),W=(N3,N4),N=",N,"(True Class)",sep=""))
+#  my.pairs(used[,1:3],u2,NA);   mtext(side=3,outer=TRUE,cex=1.25,paste(d.ind," :R,S=(N1,N2,C1,C2),W=(N3,N4),N=",N,"(Condit on 5:C)",sep=""))
+# }; dev.off(); 
+
+
+# 5(1) picture
+filenames <- c("plot1.png", "plot2.png", "plot3.png","plot4.png", "plot5.png", "plot6.png","plot7.png", "plot8.png", "plot9.png","plot10.png", "plot11.png", "plot12.png","plot13.png", "plot14.png", "plot15.png","plot16.png", "plot17.png", "plot18.png","plot19.png", "plot20.png")
+  if(sav.plot) pdf(file=paste("DatPlot",d.i,".pdf",sep=""))
+  for(nS in nSim1:nSim2){
+    if(!sav.plot) 
+        filename <- filenames[nS-20]
+  png(filename)  
+  used <- d[d[,8]==nS,]; 
+  my.pairs(used[,1:6],used[,7],NA);    mtext(side=3,outer=TRUE,cex=1.25,paste(d.ind," :R,S=(N1,N2,C1,C2),W=(N3,N4),N=",N,"(True Class)",sep=""))
+     }; 
+
+.rs.restartR()
+
+# 5(2) picture cannot run together with # 5(1) picture   !!!
+filenames <- c("plot1.png", "plot2.png", "plot3.png","plot4.png", "plot5.png", "plot6.png","plot7.png", "plot8.png", "plot9.png","plot10.png", "plot11.png", "plot12.png","plot13.png", "plot14.png", "plot15.png","plot16.png", "plot17.png", "plot18.png","plot19.png", "plot20.png")
+  if(sav.plot) pdf(file=paste("DatPlot",d.i,".pdf",sep=""))
+  for(nS in nSim1:nSim2){
+    if(!sav.plot) 
+        filename <- filenames[nS-20]
+  png(filename)  
+  u2 <- NULL
+  for(i in 1:N) u2[i] <- 4*(used[i,7]-1)+1*ifelse(used[i,5]==1,used[i,6],used[i,6]+2)
+  my.pairs(used[,1:3],u2,NA);   mtext(side=3,outer=TRUE,cex=1.25,paste(d.ind," :R,S=(N1,N2,C1,C2),W=(N3,N4),N=",N,"(Condit on 5:C)",sep=""))
+     }; 
+
+.rs.restartR()
+
+
+
+if(chk){
+  d = data.frame(d); d[,5] <- factor(d[,5]); d[,6]<- factor(d[,6]);   a = vs = list()
+  a0=whichClust(NULL,c(1,2),"Excl",d[d[,8]==1,.startVar],g1,g2,varTypes,tryMods1,"MOD",kp,tol,max.iter,TRUE)  
+  for(nS in 1:5) a[[nS]] = whichClust(NULL,c(1,2,3,5,6),"Excl",d[d[,8]==nS,.startVar],g1,g2,varTypes,tryMods1,"MOD",kp,tol,max.iter,TRUE)                                      
+  for(nS in 1:5) vs[[nS]]= stepSelect(.startVar,2,g2,tryMods1,d[d[,8]==nS,.startVar],varTypes,which.pri,.kp,.tol,.max.iter,TRUE,TRUE,"Dean")
+}
+```
+
+
